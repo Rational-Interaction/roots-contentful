@@ -19,10 +19,20 @@ mock_contentful = (opts = {}) ->
     entries: [
       sys:
         sys: 'data'
+        locale: 'Default Locale'
       fields:
         title: 'Default Title'
         body: 'Default Body'
     ]
+    space:
+      sys:
+        type: "Space",
+        id: "cfexampleapi"
+      name: "Contentful Example API",
+      locales: [
+        {code: "en-US", name: "English"},
+        {code: "tlh", name: "Klingon"}
+      ]
     content_type:
       name: 'Blog Post'
       displayField: 'title'
@@ -30,7 +40,14 @@ mock_contentful = (opts = {}) ->
   mockery.registerMock 'contentful',
     createClient: ->
       contentType: -> W.resolve(opts.content_type)
-      entries: -> W.resolve(opts.entries)
+      space: -> W.resolve(opts.space)
+      entries: (req) ->
+        if _.isUndefined req.locale
+          W.resolve(opts.entries)
+        else
+          W.resolve opts.entries.filter (entry) ->
+            return entry.sys.locale is req.locale
+
 
 unmock_contentful = ->
   mockery.deregisterAll()
@@ -243,7 +260,7 @@ describe 'single entry views', ->
 
     after -> unmock_contentful()
 
-    it 'should not have first entry\'s content in second entries single view', ->
+    it 'should not have first entry\'s content in 2nd entries single view', ->
       p = path.join(@public, "blog_posts/#{S(@title_2).slugify().s}.html")
       h.file.contains(p, @body).should.not.be.true
 
@@ -312,3 +329,242 @@ describe 'single entry views', ->
       h.file.contains(p, "#{@img_path}?w=100&h=100").should.be.true
 
     after -> unmock_contentful()
+
+describe 'locale', ->
+  describe 'setup', ->
+    before (done) ->
+      @title = ['Throw Some Ds', '\'op Ds chuH', 'arrojar algo de Ds\'']
+      @body  = [
+        'Rich Boy selling crack',
+        'mIp loDHom ngev pe\'vIl vaj pumDI\' qoghlIj'
+        'Niño rico venta de crack'
+      ]
+      mock_contentful(
+        entries: [
+          {
+            fields: {title: @title[0], body: @body[0]}
+            sys:
+              locale: 'en-US'
+          }
+          {
+            fields: {title: @title[1], body: @body[1]},
+            sys:
+              locale: 'tlh'
+          }
+          {
+            fields: {title: @title[2], body: @body[2]},
+            sys:
+              locale: 'en-es'
+          }
+        ],
+        space:
+          locales: [
+            { code: 'en-US', name: 'English' },
+            { code: 'tlh', name: 'Klingon' },
+            { code: 'en-es', name: 'Spanish' }
+          ]
+      )
+      compile_fixture.call(@, 'locale_setup').then(-> done()).catch(done)
+
+    it 'should fetch all locales from * wildcard', ->
+      p = path.join @public, 'index.html'
+      for title, i in @title
+        h.file.contains p, title
+          .should.be.true
+        h.file.contains p, @body[i]
+          .should.be.true
+
+    after -> unmock_contentful()
+
+  describe 'global', ->
+    describe 'single locale', ->
+      before (done) ->
+        @title = ['Throw Some Ds', '\'op Ds chuH', 'arrojar algo de Ds\'']
+        @body  = [
+          'Rich Boy selling crack',
+          'mIp loDHom ngev pe\'vIl vaj pumDI\' qoghlIj'
+          'Niño rico venta de crack'
+        ]
+        mock_contentful(
+          entries: [
+            {
+              fields: {title: @title[0], body: @body[0]}
+              sys:
+                locale: 'en-US'
+            }
+            {
+              fields: {title: @title[1], body: @body[1]},
+              sys:
+                locale: 'tlh'
+            }
+            {
+              fields: {title: @title[2], body: @body[2]},
+              sys:
+                locale: 'en-es'
+            }
+          ],
+          space:
+            locales: [
+              { code: 'en-US', name: 'English' },
+              { code: 'tlh', name: 'Klingon' },
+              { code: 'en-es', name: 'Spanish' }
+            ]
+        )
+        compile_fixture.call(@, 'locale_single').then(-> done()).catch(done)
+
+      it 'should render a single global', ->
+        p = path.join @public, 'index.html'
+        h.file.contains p, @title[0]
+          .should.be.false
+        h.file.contains p, @title[1]
+          .should.be.true
+
+      after -> unmock_contentful()
+
+    describe 'array of locales', ->
+      before (done) ->
+        @title = ['Throw Some Ds', '\'op Ds chuH', 'ajrrojar algo de Ds\'']
+        @body  = [
+          'Rich Boy selling crack',
+          'mIp loDHom ngev pe\'vIl vaj pumDI\' qoghlIj'
+          'Niño rico venta de crack'
+        ]
+        mock_contentful(
+          entries: [
+            {
+              fields: {title: @title[0], body: @body[0]}
+              sys:
+                locale: 'en-US'
+            }
+            {
+              fields: {title: @title[1], body: @body[1]},
+              sys:
+                locale: 'tlh'
+            }
+            {
+              fields: {title: @title[2], body: @body[2]},
+              sys:
+                locale: 'en-es'
+            }
+          ],
+          space:
+            locales: [
+              { code: 'en-US', name: 'English' },
+              { code: 'tlh', name: 'Klingon' },
+              { code: 'en-es', name: 'Spanish' }
+            ]
+        )
+        compile_fixture.call(@, 'locale_multi').then(-> done()).catch(done)
+
+
+      it 'should render an array of global locales', ->
+        p = path.join @public, 'index.html'
+        h.file.contains p, @title[1]
+          .should.be.true
+        h.file.contains p, @title[2]
+          .should.be.true
+        h.file.contains p, @title[0]
+          .should.be.false
+
+      after -> unmock_contentful()
+
+  describe 'scoped', ->
+    before (done) ->
+      @title = ['Throw Some Ds', '\'op Ds chuH', 'arrojar algo de Ds\'']
+      @body  = [
+        'Rich Boy selling crack',
+        'mIp loDHom ngev pe\'vIl vaj pumDI\' qoghlIj'
+        'Niño rico venta de crack'
+      ]
+      mock_contentful(
+        entries: [
+          {
+            fields: {title: @title[0], body: @body[0]}
+            sys:
+              locale: 'en-US'
+          }
+          {
+            fields: {title: @title[1], body: @body[1]},
+            sys:
+              locale: 'tlh'
+          }
+          {
+            fields: {title: @title[2], body: @body[2]},
+            sys:
+              locale: 'en-es'
+          }
+        ],
+        space:
+          locales: [
+            { code: 'en-US', name: 'English' },
+            { code: 'tlh', name: 'Klingon' },
+            { code: 'en-es', name: 'Spanish' }
+          ]
+      )
+      compile_fixture.call(@, 'locale_scope').then(-> done()).catch(done)
+
+    it 'should render the content type locale, not the global', ->
+      p = path.join @public, 'index.html'
+      h.file.contains p, @title[2]
+        .should.be.true
+      h.file.contains p, @body[2]
+        .should.be.true
+      h.file.contains p, @title[1]
+        .should.be.false
+      h.file.contains p, @body[1]
+        .should.be.false
+
+    after -> unmock_contentful()
+
+  describe 'locales_prefix', ->
+    before (done) ->
+      @title = ['Throw Some Ds', '\'op Ds chuH', 'arrojar algo de Ds\'']
+      @body  = [
+        'Rich Boy selling crack',
+        'mIp loDHom ngev pe\'vIl vaj pumDI\' qoghlIj'
+        'Niño rico venta de crack'
+      ]
+      mock_contentful(
+        entries: [
+          {
+            fields: {title: @title[0], body: @body[0]}
+            sys:
+              locale: 'en-US'
+          }
+          {
+            fields: {title: @title[1], body: @body[1]},
+            sys:
+              locale: 'tlh'
+          }
+          {
+            fields: {title: @title[2], body: @body[2]},
+            sys:
+              locale: 'en-es'
+          }
+        ],
+        space:
+          locales: [
+            { code: 'en-US', name: 'English' },
+            { code: 'tlh', name: 'Klingon' },
+            { code: 'en-es', name: 'Spanish' }
+          ]
+      )
+      compile_fixture.call(@, 'locale_prefix').then(-> done()).catch(done)
+
+    it 'should render using the correct template', ->
+      klingon = path.join @public, 'klingon.html'
+      spanish = path.join @public, 'spanish.html'
+
+      h.file.contains klingon, @title[1]
+        .should.be.true
+      h.file.contains klingon, @body[1]
+        .should.be.true
+      h.file.contains klingon, @body[2]
+        .should.be.false
+
+      h.file.contains spanish, @title[2]
+        .should.be.true
+      h.file.contains spanish, @body[2]
+        .should.be.true
+      h.file.contains spanish, @body[1]
+        .should.be.false
